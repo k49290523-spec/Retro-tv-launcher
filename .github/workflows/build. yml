@@ -1,0 +1,310 @@
+name: Build Retro TV APK
+on:
+  push:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create project files
+        run: |
+          mkdir -p app/src/main/java/com/example/retrotv app/src/main/res/drawable
+          cat > settings.gradle.kts <<'EOF'
+          pluginManagement {
+              repositories { google(); mavenCentral(); gradlePluginPortal() }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories { google(); mavenCentral() }
+          }
+          rootProject.name = "RetroTV"
+          include(":app")
+          EOF
+          cat > build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application") version "8.5.2" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.24" apply false
+          }
+          EOF
+          cat > gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx2g
+          android.useAndroidX=true
+          kotlin.code.style=official
+          EOF
+          cat > app/build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+
+          android {
+              namespace = "com.example.retrotv"
+              compileSdk = 34
+
+              defaultConfig {
+                  applicationId = "com.example.retrotv"
+                  minSdk = 23
+                  targetSdk = 34
+                  versionCode = 1
+                  versionName = "1.0"
+              }
+              buildFeatures { compose = true }
+              composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions { jvmTarget = "17" }
+          }
+
+          dependencies {
+              implementation("androidx.core:core-ktx:1.13.1")
+              implementation("androidx.activity:activity-compose:1.9.0")
+              implementation(platform("androidx.compose:compose-bom:2024.06.00"))
+              implementation("androidx.compose.ui:ui")
+              implementation("androidx.compose.foundation:foundation")
+              implementation("androidx.compose.material3:material3")
+          }
+          EOF
+          cat > app/src/main/AndroidManifest.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+              <uses-feature android:name="android.software.leanback" android:required="true" />
+              <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
+              <!-- Lets the launcher see other installed apps (Android 11+) -->
+              <queries>
+                  <intent>
+                      <action android:name="android.intent.action.MAIN" />
+                      <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+                  </intent>
+                  <intent>
+                      <action android:name="android.intent.action.MAIN" />
+                      <category android:name="android.intent.category.LAUNCHER" />
+                  </intent>
+              </queries>
+
+              <application
+                  android:allowBackup="true"
+                  android:icon="@drawable/ic_launcher"
+                  android:banner="@drawable/ic_launcher"
+                  android:label="Retro TV"
+                  android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:launchMode="singleTask">
+
+                      <!-- Shows up in the TV app list so you can open it normally -->
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+                      </intent-filter>
+
+                      <!-- Makes it eligible to be the home screen -->
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.HOME" />
+                          <category android:name="android.intent.category.DEFAULT" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+          cat > app/src/main/res/drawable/ic_launcher.xml <<'EOF'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp" android:height="108dp"
+              android:viewportWidth="108" android:viewportHeight="108">
+              <path android:fillColor="#1B0E3A" android:pathData="M0,0h108v108h-108z"/>
+              <path android:fillColor="#FF4F81" android:pathData="M18,30h72v48h-72z"/>
+              <path android:fillColor="#35E0C9" android:pathData="M26,38h56v32h-56z"/>
+              <path android:fillColor="#FFB23E" android:pathData="M40,82h28v6h-28z"/>
+          </vector>
+          EOF
+          cat > app/src/main/java/com/example/retrotv/MainActivity.kt <<'EOF'
+          package com.example.retrotv
+
+          import android.content.Context
+          import android.content.Intent
+          import android.os.Bundle
+          import androidx.activity.ComponentActivity
+          import androidx.activity.compose.BackHandler
+          import androidx.activity.compose.setContent
+          import androidx.compose.animation.core.animateFloatAsState
+          import androidx.compose.foundation.Image
+          import androidx.compose.foundation.background
+          import androidx.compose.foundation.border
+          import androidx.compose.foundation.clickable
+          import androidx.compose.foundation.layout.*
+          import androidx.compose.foundation.lazy.LazyRow
+          import androidx.compose.foundation.lazy.itemsIndexed
+          import androidx.compose.foundation.shape.RoundedCornerShape
+          import androidx.compose.material3.Text
+          import androidx.compose.runtime.*
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.draw.clip
+          import androidx.compose.ui.draw.drawBehind
+          import androidx.compose.ui.draw.shadow
+          import androidx.compose.ui.focus.FocusRequester
+          import androidx.compose.ui.focus.focusRequester
+          import androidx.compose.ui.focus.onFocusChanged
+          import androidx.compose.ui.geometry.Offset
+          import androidx.compose.ui.graphics.Brush
+          import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.graphics.ImageBitmap
+          import androidx.compose.ui.graphics.Shadow
+          import androidx.compose.ui.graphics.asImageBitmap
+          import androidx.compose.ui.graphics.graphicsLayer
+          import androidx.compose.ui.layout.ContentScale
+          import androidx.compose.ui.platform.LocalContext
+          import androidx.compose.ui.text.TextStyle
+          import androidx.compose.ui.text.font.FontFamily
+          import androidx.compose.ui.text.font.FontWeight
+          import androidx.compose.ui.unit.dp
+          import androidx.compose.ui.unit.sp
+          import androidx.core.graphics.drawable.toBitmap
+          import kotlinx.coroutines.delay
+          import java.text.SimpleDateFormat
+          import java.util.Date
+          import java.util.Locale
+
+          private val Plum = Color(0xFF1B0E3A)
+          private val Horizon = Color(0xFF3A1269)
+          private val Rose = Color(0xFFC2306B)
+          private val Amber = Color(0xFFFFB23E)
+          private val Pink = Color(0xFFFF4F81)
+          private val Teal = Color(0xFF35E0C9)
+          private val Cream = Color(0xFFFFF0D4)
+
+          class MainActivity : ComponentActivity() {
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  setContent { Launcher() }
+              }
+          }
+
+          data class AppItem(val label: String, val pkg: String, val icon: ImageBitmap)
+
+          // Lists every app that has a TV (or regular) launcher entry, except this launcher.
+          fun loadApps(ctx: Context): List<AppItem> {
+              val pm = ctx.packageManager
+              fun query(cat: String) =
+                  pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(cat), 0)
+              return (query(Intent.CATEGORY_LEANBACK_LAUNCHER) + query(Intent.CATEGORY_LAUNCHER))
+                  .distinctBy { it.activityInfo.packageName }
+                  .filter { it.activityInfo.packageName != ctx.packageName }
+                  .map { ri ->
+                      val art = ri.activityInfo.loadBanner(pm) ?: ri.loadIcon(pm)
+                      AppItem(ri.loadLabel(pm).toString(), ri.activityInfo.packageName, art.toBitmap().asImageBitmap())
+                  }
+                  .sortedBy { it.label.lowercase() }
+          }
+
+          fun openApp(ctx: Context, pkg: String) {
+              val pm = ctx.packageManager
+              (pm.getLeanbackLaunchIntentForPackage(pkg) ?: pm.getLaunchIntentForPackage(pkg))
+                  ?.let { ctx.startActivity(it) }
+          }
+
+          @Composable
+          fun Launcher() {
+              val ctx = LocalContext.current
+              val apps = remember { loadApps(ctx) }
+              var focused by remember { mutableIntStateOf(0) }
+              var now by remember { mutableStateOf("") }
+              val first = remember { FocusRequester() }
+
+              BackHandler(true) { }  // a home screen should not close itself
+              LaunchedEffect(Unit) {
+                  val fmt = SimpleDateFormat("h:mm a", Locale.getDefault())
+                  while (true) { now = fmt.format(Date()); delay(15_000) }
+              }
+              LaunchedEffect(apps) { if (apps.isNotEmpty()) first.requestFocus() }
+
+              Box(
+                  Modifier.fillMaxSize()
+                      .background(Brush.verticalGradient(listOf(Plum, Horizon, Rose, Amber)))
+              ) {
+                  Column(Modifier.fillMaxSize().padding(horizontal = 56.dp, vertical = 40.dp)) {
+                      Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                          Text("Retro TV", color = Cream, fontSize = 22.sp, fontFamily = FontFamily.Monospace,
+                              fontWeight = FontWeight.Bold,
+                              style = TextStyle(shadow = Shadow(Pink, Offset(4f, 4f), 0f)))
+                          Text(now, color = Amber, fontSize = 28.sp, fontFamily = FontFamily.Monospace)
+                      }
+                      Spacer(Modifier.weight(1f))
+                      Text(
+                          apps.getOrNull(focused)?.label ?: "", color = Cream, fontSize = 48.sp,
+                          fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
+                          style = TextStyle(shadow = Shadow(Pink, Offset(6f, 6f), 0f))
+                      )
+                      LazyRow(
+                          horizontalArrangement = Arrangement.spacedBy(28.dp),
+                          contentPadding = PaddingValues(vertical = 44.dp, horizontal = 12.dp)
+                      ) {
+                          itemsIndexed(apps) { i, app ->
+                              Tile(
+                                  app,
+                                  if (i == 0) Modifier.focusRequester(first) else Modifier,
+                                  onFocus = { focused = i }
+                              ) { openApp(ctx, app.pkg) }
+                          }
+                      }
+                  }
+                  // CRT scanlines
+                  Box(Modifier.fillMaxSize().drawBehind {
+                      var y = 0f
+                      while (y < size.height) {
+                          drawLine(Color.Black.copy(alpha = 0.2f), Offset(0f, y), Offset(size.width, y), 1.5f)
+                          y += 4f
+                      }
+                  })
+              }
+          }
+
+          @Composable
+          fun Tile(app: AppItem, modifier: Modifier, onFocus: () -> Unit, onClick: () -> Unit) {
+              var on by remember { mutableStateOf(false) }
+              val scale by animateFloatAsState(if (on) 1.14f else 1f, label = "scale")
+              val shape = RoundedCornerShape(14.dp)
+              Box(
+                  modifier
+                      .size(220.dp, 138.dp)
+                      .graphicsLayer { scaleX = scale; scaleY = scale }
+                      .shadow(if (on) 28.dp else 4.dp, shape, ambientColor = Teal, spotColor = Teal)
+                      .clip(shape)
+                      .background(Brush.linearGradient(listOf(Pink, Color(0xFF6B2A9E))))
+                      .border(3.dp, if (on) Teal else Cream, shape)
+                      .onFocusChanged { on = it.isFocused; if (it.isFocused) onFocus() }
+                      .clickable(onClick = onClick),  // also makes the tile D-pad focusable
+                  contentAlignment = Alignment.Center
+              ) {
+                  Image(app.icon, app.label, Modifier.fillMaxSize(0.7f), contentScale = ContentScale.Fit)
+              }
+          }
+          EOF
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+      - name: Build debug APK
+        run: gradle assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: retro-tv-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+      - name: Publish download link
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "tv-${{ github.run_number }}" app/build/outputs/apk/debug/app-debug.apk --title "Retro TV build ${{ github.run_number }}" --notes "Debug APK for Android TV"
+
